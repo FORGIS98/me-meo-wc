@@ -1,4 +1,7 @@
 <resources>
     <string name="app_name">Me Meo WC</string>
     <string name="title_activity_maps">MapsActivity</string>
+    <string name="add_wc">Add WC</string>
+    <string name="save_note">Save</string>
+    <string name="cancel_note">Cancel</string>
 </resources>
