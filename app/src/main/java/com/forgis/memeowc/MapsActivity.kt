@@ -1,5 +1,7 @@
 package com.forgis.memeowc
 
+// import com.forgis.memeowc.databinding.ActivityMapsBinding
+
 import android.Manifest
 import android.annotation.SuppressLint
 import android.content.pm.PackageManager
@@ -9,14 +11,11 @@ import android.util.Log
 import android.widget.Button
 import android.widget.EditText
 import android.widget.LinearLayout
-
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
-
-// import com.forgis.memeowc.databinding.ActivityMapsBinding
-
+import androidx.room.Room
 import com.google.android.gms.location.FusedLocationProviderClient
 import com.google.android.gms.location.LocationServices
 import com.google.android.gms.maps.CameraUpdateFactory
@@ -24,11 +23,11 @@ import com.google.android.gms.maps.GoogleMap
 import com.google.android.gms.maps.OnMapReadyCallback
 import com.google.android.gms.maps.SupportMapFragment
 import com.google.android.gms.maps.model.LatLng
+import com.google.android.gms.maps.model.MarkerOptions
 import com.google.android.gms.tasks.Task
 import com.google.android.libraries.places.api.Places
 import com.google.android.libraries.places.api.net.PlacesClient
-
-import java.util.Locale
+import java.util.*
 
 class MapsActivity : AppCompatActivity(), OnMapReadyCallback {
 
@@ -44,6 +43,10 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback {
     private var defaultLocation = getDefaultLocation()
     private var lastKnownLocation: Location? = null
 
+    // Database
+    private lateinit var db: AppDatabase
+
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
@@ -58,7 +61,7 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback {
         mapFragment.getMapAsync(this)
 
         // Construct clients
-        Places.initialize(applicationContext, getString(R.string.google_maps_key))
+        Places.initialize(this.applicationContext, getString(R.string.google_maps_key))
         placesClient = Places.createClient(this)
 
         fusedLocationProviderClient = LocationServices.getFusedLocationProviderClient(this)
@@ -67,6 +70,10 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback {
         button.setOnClickListener {
             saveWCPosition()
         }
+
+        db = Room.databaseBuilder(this.applicationContext, AppDatabase::class.java, "world-wc").build()
+
+        updateMapWithWC()
     }
 
     private fun saveWCPosition() {
@@ -84,12 +91,12 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback {
         descriptionInput.setView(layout)
 
         // Dialog Logic
-        descriptionInput.setPositiveButton(R.string.save_note) {view, _ ->
+        descriptionInput.setPositiveButton(R.string.save_note) { view, _ ->
             storeNewWC(description.text.toString())
             view.dismiss()
         }
 
-        descriptionInput.setNegativeButton(R.string.cancel_note) {view, _ ->
+        descriptionInput.setNegativeButton(R.string.cancel_note) { view, _ ->
             view.cancel()
         }
 
@@ -97,7 +104,21 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback {
     }
 
     private fun storeNewWC(description: String) {
-        Log.i(TAG, "User position: (Lat, Long) = (${lastKnownLocation!!.latitude}, ${lastKnownLocation!!.longitude}) | Description: $description")
+        val wc: WC = WC(lastKnownLocation!!.latitude, lastKnownLocation!!.longitude, description)
+        db.wcDao().insertWc(wc)
+        updateMapWithWC()
+    }
+
+    private fun updateMapWithWC() {
+        val wcList: List<WC> = db.wcDao().getAll()
+        for (wc in wcList) {
+            map.addMarker(
+                MarkerOptions()
+                    .position(LatLng(wc.latitude!!, wc.longitude!!))
+                    .title(wc.description)
+                    .alpha(0.5F)
+            )
+        }
     }
 
     // Prompts user for device GPS location
@@ -147,7 +168,10 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback {
                     if (task.isSuccessful) {
                         lastKnownLocation = task.result
                         if (lastKnownLocation != null) {
-                            Log.i(TAG, "User position: (Lat, Long) = (${lastKnownLocation!!.latitude}, ${lastKnownLocation!!.longitude})")
+                            Log.i(
+                                TAG,
+                                "User position: (Lat, Long) = (${lastKnownLocation!!.latitude}, ${lastKnownLocation!!.longitude})"
+                            )
                             map.moveCamera(
                                 CameraUpdateFactory.newLatLngZoom(
                                     LatLng(
@@ -161,7 +185,12 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback {
                         Log.d(TAG, "Current location is null.")
                         Log.e(TAG, "Exception: %s", task.exception)
 
-                        map.moveCamera(CameraUpdateFactory.newLatLngZoom(defaultLocation, DEFAULT_ZOOM.toFloat()))
+                        map.moveCamera(
+                            CameraUpdateFactory.newLatLngZoom(
+                                defaultLocation,
+                                DEFAULT_ZOOM.toFloat()
+                            )
+                        )
                         map.uiSettings.isMyLocationButtonEnabled = false
                     }
                 }
@@ -215,6 +244,7 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback {
     companion object {
         private val TAG = MapsActivity::class.java.simpleName
         private const val PERMISSIONS_REQUEST_ACCESS_FINE_LOCATION = 1
+
         // private const val PERMISSIONS_REQUEST_ACCESS_COARSE_LOCATION = 1
         private const val DEFAULT_ZOOM = 15
     }
