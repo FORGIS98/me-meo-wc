@@ -27,11 +27,14 @@ import com.google.android.gms.maps.model.MarkerOptions
 import com.google.android.gms.tasks.Task
 import com.google.android.libraries.places.api.Places
 import com.google.android.libraries.places.api.net.PlacesClient
+import kotlinx.coroutines.delay
 import java.util.*
+import kotlin.concurrent.thread
 
 class MapsActivity : AppCompatActivity(), OnMapReadyCallback {
 
     private lateinit var map: GoogleMap
+    private var mapReady: Boolean = false
     // private lateinit var binding: ActivityMapsBinding
 
     // Entry points to APIs
@@ -45,7 +48,6 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback {
 
     // Database
     private lateinit var db: AppDatabase
-
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -71,9 +73,16 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback {
             saveWCPosition()
         }
 
-        db = Room.databaseBuilder(this.applicationContext, AppDatabase::class.java, "world-wc").build()
 
-        updateMapWithWC()
+        thread(start = true) {
+            while (!mapReady) {
+                Thread.sleep(500)
+            }
+
+            db = Room.databaseBuilder(
+                applicationContext, AppDatabase::class.java, "world-wc"
+            ).build()
+        }
     }
 
     private fun saveWCPosition() {
@@ -105,19 +114,28 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback {
 
     private fun storeNewWC(description: String) {
         val wc: WC = WC(lastKnownLocation!!.latitude, lastKnownLocation!!.longitude, description)
-        db.wcDao().insertWc(wc)
-        updateMapWithWC()
+        Log.i(
+            TAG,
+            "Saving location: ${lastKnownLocation!!.latitude}, ${lastKnownLocation!!.longitude} with description: $description"
+        )
+        thread(start = true) {
+            db.wcDao().insertWc(wc)
+            updateMapWithWC()
+        }
     }
 
     private fun updateMapWithWC() {
-        val wcList: List<WC> = db.wcDao().getAll()
-        for (wc in wcList) {
-            map.addMarker(
-                MarkerOptions()
-                    .position(LatLng(wc.latitude!!, wc.longitude!!))
-                    .title(wc.description)
-                    .alpha(0.5F)
-            )
+        thread(start = true) {
+            val wcList: List<WC> = db.wcDao().getAll()
+            Log.i(TAG, "Loading a total of ${wcList.size} WC.")
+            for (wc in wcList) {
+                map.addMarker(
+                    MarkerOptions()
+                        .position(LatLng(wc.latitude!!, wc.longitude!!))
+                        .title(wc.description)
+                        .alpha(0.5F)
+                )
+            }
         }
     }
 
@@ -235,10 +253,13 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback {
         // First we get GPS permissions
         getLocationPermission()
 
+        // Update UI
         updateLocationUI()
 
         // Gets the current location and centers the map
         getDeviceLocation()
+
+        mapReady = true
     }
 
     companion object {
