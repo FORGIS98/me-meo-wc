@@ -7,6 +7,8 @@ import android.annotation.SuppressLint
 import android.content.pm.PackageManager
 import android.location.Location
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
 import android.widget.Button
 import android.widget.EditText
@@ -27,7 +29,6 @@ import com.google.android.gms.maps.model.MarkerOptions
 import com.google.android.gms.tasks.Task
 import com.google.android.libraries.places.api.Places
 import com.google.android.libraries.places.api.net.PlacesClient
-import kotlinx.coroutines.delay
 import java.util.*
 import kotlin.concurrent.thread
 
@@ -48,6 +49,7 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback {
 
     // Database
     private lateinit var db: AppDatabase
+    private lateinit var wcList: List<WC>
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -113,21 +115,21 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback {
     }
 
     private fun storeNewWC(description: String) {
-        val wc: WC = WC(lastKnownLocation!!.latitude, lastKnownLocation!!.longitude, description)
+        val wc = WC(lastKnownLocation!!.latitude, lastKnownLocation!!.longitude, description)
         Log.i(
             TAG,
             "Saving location: ${lastKnownLocation!!.latitude}, ${lastKnownLocation!!.longitude} with description: $description"
         )
         thread(start = true) {
             db.wcDao().insertWc(wc)
+            wcList = db.wcDao().getAll()
+            Log.i(TAG, "Loading a total of ${wcList.size} WC.")
             updateMapWithWC()
         }
     }
 
     private fun updateMapWithWC() {
-        thread(start = true) {
-            val wcList: List<WC> = db.wcDao().getAll()
-            Log.i(TAG, "Loading a total of ${wcList.size} WC.")
+        Handler(Looper.getMainLooper()).post {
             for (wc in wcList) {
                 map.addMarker(
                     MarkerOptions()
